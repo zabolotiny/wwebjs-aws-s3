@@ -73,22 +73,31 @@ class AwsS3Store {
   async extract(options) {
     this.debugLog('[METHOD: extract] Triggered.');
 
-    const remoteFilePath = path.join(this.remoteDataPath, `${options.session}.zip`).replace(/\\/g, '/');
-    const params = {
-      Bucket: this.bucketName,
-      Key: remoteFilePath
-    };
-    const fileStream = fs.createWriteStream(options.path);
-    const response = await this.s3Client.send(new this.getObjectCommand(params));
-    await new Promise((resolve, reject) => {
-      response.Body.pipe(fileStream)
-        .on('error', reject)
-        .on('finish', resolve);
-    });
+    try {
+        const remoteFilePath = path.join(this.remoteDataPath, `${options.session}.zip`).replace(/\\/g, '/');
+        const params = {
+            Bucket: this.bucketName,
+            Key: remoteFilePath
+        };
+        const fileStream = fs.createWriteStream(options.path);
+        
+        const response = await this.s3Client.send(new this.getObjectCommand(params));
+        
+        await new Promise((resolve, reject) => {
+            response.Body.pipe(fileStream)
+                .on('error', (error) => {
+                    this.debugLog(`[METHOD: extract] Error during file streaming. REMOTE_PATH='${remoteFilePath}', LOCAL_PATH='${options.path}', ERROR='${error.message}'`);
+                    reject(error); // This will cause the outer promise to be rejected with this error
+                })
+                .on('finish', resolve);
+        });
 
-    this.debugLog(`[METHOD: extract] File extracted. REMOTE_PATH='${remoteFilePath}', LOCAL_PATH='${options.path}'.`);
-
-  }
+        this.debugLog(`[METHOD: extract] File extracted. REMOTE_PATH='${remoteFilePath}', LOCAL_PATH='${options.path}'.`);
+    } catch (error) {
+        this.debugLog(`[METHOD: extract] Error during file extraction. REMOTE_PATH='${options.remoteDataPath}', LOCAL_PATH='${options.path}', ERROR='${error.message}'`);
+        throw error; // Rethrow the error if you want to propagate it
+    }
+}
 
   async delete(options) {
     this.debugLog('[METHOD: delete] Triggered.');
